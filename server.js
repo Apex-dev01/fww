@@ -5,49 +5,80 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Serve the static client-side files from the 'public' directory
+// Middleware to decode the Base64 URL
+const decodeUrlMiddleware = (req, res, next) => {
+    try {
+        const decodedUrl = Buffer.from(req.params.encodedUrl, 'base64').toString('utf-8');
+        req.targetUrl = decodedUrl;
+        next();
+    } catch (e) {
+        res.status(400).send('Invalid URL encoding');
+    }
+};
+
+// New route to handle direct requests to /search/
+app.get('/search/:encodedUrl', (req, res) => {
+    // Redirect the request to the correct proxy route
+    res.redirect(`/proxy/${req.params.encodedUrl}`);
+});
+
+// Proxy route that takes a Base64 encoded URL
+app.use('/proxy/:encodedUrl', decodeUrlMiddleware, (req, res, next) => {
+    const target = req.targetUrl;
+
+    // Remove protocol for the proxy target
+    const proxyTarget = target.startsWith('http') ? target : `https://${target}`;
+
+    // Create the proxy middleware instance for the dynamic target
+    const proxy = createProxyMiddleware({
+        target: proxyTarget,
+        changeOrigin: true,
+        selfHandleResponse: true, // Handle the response ourselves to potentially rewrite it
+        logger: console,
+        onProxyRes: function (proxyRes, req, res) {
+            // Check content type to avoid messing with non-text files
+            const contentType = proxyRes.headers['content-type'];
+            if (contentType && contentType.includes('text/html')) {
+                // Buffer the response
+                const originalWrite = res.write;
+                const originalEnd = res.end;
+                let body = Buffer.from([]);
+                proxyRes.on('data', (chunk) => {
+                    body = Buffer.concat([body, chunk]);
+                });
+                proxyRes.on('end', () => {
+                    const html = body.toString('utf8');
+                    // Simple URL rewrite to ensure relative links work correctly
+                    const rewrittenHtml = html.replace(/href="\//g, `href="/proxy/${req.params.encodedUrl}/`);
+                    res.setHeader('Content-Length', Buffer.byteLength(rewrittenHtml));
+                    res.write(rewrittenHtml);
+                    res.end();
+                });
+            } else {
+                // For non-HTML files, just stream the response as-is
+                proxyRes.pipe(res);
+            }
+        },
+        onProxyReq: (proxyReq, req, res) => {
+            // Optional: Modify the proxy request
+            if (proxyReq.getHeader('referer')) {
+                proxyReq.setHeader('referer', proxyTarget);
+            }
+        },
+        onError: (err, req, res) => {
+            console.error('Proxy error:', err);
+            res.status(500).send('Proxy error: ' + err.message);
+        }
+    });
+    proxy(req, res, next);
+});
+
+// Serve static files from the 'public' directory
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Proxy middleware for handling decoded URLs
-// The path looks like /proxy/{base64-encoded-url}
-app.use('/proxy/:url', (req, res, next) => {
-    try {
-        // Decode the base64 URL from the request parameters
-        const decodedUrl = Buffer.from(req.params.url, 'base64').toString('utf-8');
-        
-        // Remove the /proxy prefix from the request path before forwarding
-        // and append the rest of the original path
-        const restOfPath = req.originalUrl.substring(req.originalUrl.indexOf(req.params.url) + req.params.url.length);
-
-        // Configure the proxy with the decoded target
-        const proxyConfig = {
-            target: decodedUrl,
-            changeOrigin: true,
-            selfHandleResponse: true, // Handle the response ourselves
-            onProxyReq: (proxyReq, req, res) => {
-                // Remove the 'host' header to prevent issues with some sites
-                proxyReq.removeHeader('host');
-                // Remove the /proxy path from the request before forwarding
-                const targetUrl = new URL(decodedUrl);
-                proxyReq.path = targetUrl.pathname + targetUrl.search + restOfPath;
-            },
-            onProxyRes: (proxyRes, req, res) => {
-                // Set a custom header to identify the proxied response
-                res.setHeader('X-Proxy-Response', 'true');
-                proxyRes.pipe(res);
-            },
-            onError: (err, req, res) => {
-                console.error('Proxy error:', err);
-                res.status(500).send('Proxy Error');
-            }
-        };
-
-        createProxyMiddleware(proxyConfig)(req, res, next);
-
-    } catch (error) {
-        console.error('URL decoding error:', error);
-        res.status(400).send('Invalid URL format');
-    }
+// Fallback to serve the main HTML page for any other route
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.listen(PORT, () => {
