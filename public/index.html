@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Proxy</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --red: #ff3333;
+            --black: #1a1a1a;
+            --dark-gray: #333333;
+            --light-gray: #f0f0f0;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--black);
+            color: var(--light-gray);
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .header {
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            color: var(--red);
+            font-weight: 700;
+            text-align: center;
+            margin: 0;
+            font-size: 2.5rem;
+        }
+
+        form {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+        }
+
+        #url-input, #search-engine {
+            background-color: var(--dark-gray);
+            color: var(--light-gray);
+            border: 2px solid var(--red);
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 1rem;
+            flex-grow: 1;
+        }
+        
+        #search-engine {
+            width: 150px;
+            flex-grow: 0;
+        }
+
+        #go-button {
+            background-color: var(--red);
+            color: var(--black);
+            border: none;
+            border-radius: 8px;
+            padding: 12px 20px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        #go-button:hover {
+            background-color: #ff6666;
+        }
+
+        iframe {
+            flex-grow: 1;
+            width: 100%;
+            border: none;
+            border-radius: 8px;
+            background-color: white; /* to show iframe loaded */
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Responsive design for mobile devices */
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+            }
+
+            form {
+                flex-direction: column;
+                gap: 5px;
+            }
+
+            #url-input, #search-engine, #go-button {
+                width: 100%;
+            }
+
+            #go-button {
+                margin-top: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Simple Proxy</h1>
+            <form id="proxy-form">
+                <input type="text" id="url-input" placeholder="Enter URL or search query..." required>
+                <select id="search-engine">
+                    <option value="google">Google</option>
+                    <option value="duckduckgo">DuckDuckGo</option>
+                    <option value="bing">Bing</option>
+                </select>
+                <button type="submit" id="go-button">Go</button>
+            </form>
+        </div>
+        <iframe id="proxy-iframe" sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-top-navigation"></iframe>
+    </div>
+
+    <script>
+        // Use a function to ensure the script runs after the DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', () => {
+
+            const form = document.getElementById('proxy-form');
+            const urlInput = document.getElementById('url-input');
+            const searchEngineSelect = document.getElementById('search-engine');
+            const iframe = document.getElementById('proxy-iframe');
+
+            // Function to encode a URL to Base64
+            const encodeUrl = (url) => btoa(url);
+
+            // Check for Service Worker support and register it
+            if ('serviceWorker' in navigator) {
+                // The Service Worker code is defined as a string
+                const swCode = `
+                    const proxyPrefix = location.protocol + '//' + location.host + '/proxy/';
+
+                    // Function to encode a URL to Base64
+                    const encodeUrl = (url) => btoa(url);
+
+                    // Function to handle fetching and URL rewriting
+                    self.addEventListener('fetch', (event) => {
+                        const request = event.request;
+                        const url = new URL(request.url);
+
+                        // Only intercept requests for resources within the proxied iframe
+                        if (url.origin === location.origin && request.destination !== 'document') {
+                            const newUrl = proxyPrefix + encodeUrl(url.href);
+                            event.respondWith(fetch(newUrl, { mode: 'cors' }));
+                            return;
+                        }
+
+                        // For the main document, which is the iframe's source,
+                        // we let the browser handle it as it's already going through the proxy.
+                        if (url.origin === location.origin && request.destination === 'document') {
+                            event.respondWith(fetch(request));
+                            return;
+                        }
+                    });
+                `;
+
+                // Create a Blob from the Service Worker code
+                const swBlob = new Blob([swCode], { type: 'application/javascript' });
+
+                // Register the Service Worker from the Blob URL
+                navigator.serviceWorker.register(URL.createObjectURL(swBlob))
+                    .then(registration => {
+                        console.log('Service Worker registered successfully:', registration);
+                    })
+                    .catch(error => {
+                        console.error('Service Worker registration failed:', error);
+                    });
+            }
+
+            // Handle form submission
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+
+                let url = urlInput.value.trim();
+
+                // Check if the input is a URL or a search query
+                try {
+                    new URL(url);
+                } catch (_) {
+                    // If it's not a valid URL, treat it as a search query
+                    const searchQuery = encodeURIComponent(url);
+                    const searchEngine = searchEngineSelect.value;
+                    
+                    switch (searchEngine) {
+                        case 'google':
+                            url = `https://www.google.com/search?q=${searchQuery}`;
+                            break;
+                        case 'duckduckgo':
+                            url = `https://duckduckgo.com/?q=${searchQuery}`;
+                            break;
+                        case 'bing':
+                            url = `https://www.bing.com/search?q=${searchQuery}`;
+                            break;
+                        default:
+                            url = `https://www.google.com/search?q=${searchQuery}`;
+                            break;
+                    }
+                }
+
+                // If the URL is missing a protocol, add https://
+                if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                    url = 'https://' + url;
+                }
+
+                // Encode the URL and set it as the iframe's source
+                const encodedUrl = encodeUrl(url);
+                iframe.src = `/proxy/${encodedUrl}`;
+            });
+        });
+    </script>
+</body>
+</html>
