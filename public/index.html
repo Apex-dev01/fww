@@ -147,39 +147,8 @@
 
             // Check for Service Worker support and register it
             if ('serviceWorker' in navigator) {
-                // The Service Worker code is defined as a string
-                const swCode = `
-                    const proxyPrefix = location.protocol + '//' + location.host + '/proxy/';
-
-                    // Function to encode a URL to Base64
-                    const encodeUrl = (url) => btoa(url);
-
-                    // Function to handle fetching and URL rewriting
-                    self.addEventListener('fetch', (event) => {
-                        const request = event.request;
-                        const url = new URL(request.url);
-
-                        // Only intercept requests for resources within the proxied iframe
-                        if (url.origin === location.origin && request.destination !== 'document') {
-                            const newUrl = proxyPrefix + encodeUrl(url.href);
-                            event.respondWith(fetch(newUrl, { mode: 'cors' }));
-                            return;
-                        }
-
-                        // For the main document, which is the iframe's source,
-                        // we let the browser handle it as it's already going through the proxy.
-                        if (url.origin === location.origin && request.destination === 'document') {
-                            event.respondWith(fetch(request));
-                            return;
-                        }
-                    });
-                `;
-
-                // Create a Blob from the Service Worker code
-                const swBlob = new Blob([swCode], { type: 'application/javascript' });
-
-                // Register the Service Worker from the Blob URL
-                navigator.serviceWorker.register(URL.createObjectURL(swBlob))
+                // Register the Service Worker from the separate file
+                navigator.serviceWorker.register('/sw.js')
                     .then(registration => {
                         console.log('Service Worker registered successfully:', registration);
                     })
