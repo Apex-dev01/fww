@@ -16,6 +16,12 @@ const decodeUrlMiddleware = (req, res, next) => {
     }
 };
 
+// New middleware to handle a specific malformed URL from the Service Worker
+app.use('/search/proxy/:encodedUrl*', (req, res) => {
+    // Correctly redirect the malformed URL to the proxy endpoint
+    res.redirect(`/proxy/${req.params.encodedUrl}${req.params['0'] || ''}`);
+});
+
 // New route to handle direct requests to /search/
 app.get('/search/:encodedUrl', (req, res) => {
     // Redirect the request to the correct proxy route
@@ -23,7 +29,7 @@ app.get('/search/:encodedUrl', (req, res) => {
 });
 
 // Proxy route that takes a Base64 encoded URL
-app.use('/proxy/:encodedUrl', decodeUrlMiddleware, (req, res, next) => {
+app.use('/proxy/:encodedUrl*', decodeUrlMiddleware, (req, res, next) => {
     const target = req.targetUrl;
 
     // Remove protocol for the proxy target
