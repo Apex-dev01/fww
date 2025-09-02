@@ -1,0 +1,13 @@
+{
+  "name": "web-proxy",
+  "version": "1.0.0",
+  "description": "A self-contained web proxy.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "http-proxy-middleware": "^2.0.6"
+  }
+}
