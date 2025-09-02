@@ -20,7 +20,7 @@ self.addEventListener('fetch', (event) => {
     if (url.pathname.startsWith(proxyPrefix)) {
         return;
     }
-
+    
     // A check to ensure we only proxy requests that originate from our own site.
     // This prevents the Service Worker from trying to proxy external URLs.
     if (url.origin !== self.location.origin) {
