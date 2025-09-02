@@ -5,6 +5,18 @@ const proxyPrefix = '/proxy/';
 // Function to encode a URL to Base64
 const encodeUrl = (url) => btoa(url);
 
+// A Service Worker's install event
+self.addEventListener('install', (event) => {
+    // Force the waiting service worker to become the active one
+    event.waitUntil(self.skipWaiting());
+});
+
+// A Service Worker's activate event
+self.addEventListener('activate', (event) => {
+    // Take control of all clients without a reload
+    event.waitUntil(self.clients.claim());
+});
+
 // Main fetch event listener
 self.addEventListener('fetch', (event) => {
     const request = event.request;
