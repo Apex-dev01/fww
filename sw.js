@@ -1,6 +1,6 @@
 // This Service Worker intercepts all network requests from the proxied page.
 
-const proxyPrefix = location.protocol + '//' + location.host + '/proxy/';
+const proxyPrefix = '/proxy/';
 
 // Function to encode a URL to Base64
 const encodeUrl = (url) => btoa(url);
@@ -10,18 +10,30 @@ self.addEventListener('fetch', (event) => {
     const request = event.request;
     const url = new URL(request.url);
 
+    // Only handle requests that are not for the Service Worker itself
+    // to avoid an infinite loop.
+    if (url.pathname === '/sw.js') {
+        return;
+    }
+    
     // Do not intercept our own proxy URL
-    if (url.pathname.startsWith('/proxy/')) {
+    if (url.pathname.startsWith(proxyPrefix)) {
         return;
     }
 
-    // Intercept requests for resources and links from the proxied page.
-    // We check if the request is coming from our own origin, which means it
-    // is a resource loaded by the content inside the iframe.
-    if (url.origin === location.origin) {
-        const newUrl = proxyPrefix + encodeUrl(url.href);
-        // Respond with the proxied request, enabling CORS
-        event.respondWith(fetch(newUrl, { mode: 'cors' }));
-        return;
-    }
+    // Intercept all requests originating from the proxied page
+    // and rewrite their URL to go through our proxy.
+    const newUrl = new URL(event.request.url);
+    const proxiedUrl = proxyPrefix + encodeUrl(newUrl.href);
+
+    event.respondWith(
+        fetch(proxiedUrl, { mode: 'cors' })
+        .catch(error => {
+            console.error('Fetch failed:', error);
+            // Optionally, return a custom error response
+            return new Response("An error occurred while fetching the proxied resource.", {
+                status: 500
+            });
+        })
+    );
 });
