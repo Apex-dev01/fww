@@ -9,23 +9,28 @@ const encodeUrl = (url) => btoa(url);
 self.addEventListener('fetch', (event) => {
     const request = event.request;
     const url = new URL(request.url);
-
-    // Only handle requests that are not for the Service Worker itself
-    // to avoid an infinite loop.
+    
+    // Do not intercept requests for the Service Worker itself
     if (url.pathname === '/sw.js') {
         return;
     }
-    
-    // Do not intercept our own proxy URL
+
+    // Do not intercept already proxied URLs to avoid an infinite loop.
+    // We check if the pathname starts with our defined proxy prefix.
     if (url.pathname.startsWith(proxyPrefix)) {
         return;
     }
 
-    // Intercept all requests originating from the proxied page
-    // and rewrite their URL to go through our proxy.
-    const newUrl = new URL(event.request.url);
-    const proxiedUrl = proxyPrefix + encodeUrl(newUrl.href);
+    // A check to ensure we only proxy requests that originate from our own site.
+    // This prevents the Service Worker from trying to proxy external URLs.
+    if (url.origin !== self.location.origin) {
+        return;
+    }
 
+    // Intercept the request and rewrite its URL to go through our proxy.
+    const proxiedUrl = new URL(proxyPrefix + encodeUrl(event.request.url), self.location.origin);
+
+    // Respond with the proxied request, enabling CORS
     event.respondWith(
         fetch(proxiedUrl, { mode: 'cors' })
         .catch(error => {
